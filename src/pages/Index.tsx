@@ -11,6 +11,14 @@ import { Progress } from '@/components/ui/progress';
 import Icon from '@/components/ui/icon';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 
+interface StageExpense {
+  id: string;
+  description: string;
+  amount: number;
+  type: 'materials' | 'labor';
+  date: string;
+}
+
 interface WorkStage {
   id: string;
   name: string;
@@ -18,6 +26,7 @@ interface WorkStage {
   status: 'pending' | 'in-progress' | 'completed';
   budget: number;
   spent: number;
+  expenses: StageExpense[];
 }
 
 interface Site {
@@ -51,9 +60,15 @@ const Index = () => {
       totalExpense: 850000, 
       balance: 650000,
       stages: [
-        { id: 's1', name: 'Фундамент', progress: 100, status: 'completed', budget: 300000, spent: 280000 },
-        { id: 's2', name: 'Стены', progress: 65, status: 'in-progress', budget: 500000, spent: 320000 },
-        { id: 's3', name: 'Кровля', progress: 0, status: 'pending', budget: 250000, spent: 0 },
+        { id: 's1', name: 'Фундамент', progress: 100, status: 'completed', budget: 300000, spent: 280000, expenses: [
+          { id: 'e1', description: 'Бетон и арматура', amount: 120000, type: 'materials', date: '2025-01-10' },
+          { id: 'e2', description: 'Работа бригады', amount: 160000, type: 'labor', date: '2025-01-15' },
+        ]},
+        { id: 's2', name: 'Стены', progress: 65, status: 'in-progress', budget: 500000, spent: 320000, expenses: [
+          { id: 'e3', description: 'Кирпич', amount: 200000, type: 'materials', date: '2025-01-20' },
+          { id: 'e4', description: 'Кладка стен', amount: 120000, type: 'labor', date: '2025-01-25' },
+        ]},
+        { id: 's3', name: 'Кровля', progress: 0, status: 'pending', budget: 250000, spent: 0, expenses: [] },
       ]
     },
     { 
@@ -64,8 +79,15 @@ const Index = () => {
       totalExpense: 620000, 
       balance: 180000,
       stages: [
-        { id: 's4', name: 'Земляные работы', progress: 100, status: 'completed', budget: 150000, spent: 145000 },
-        { id: 's5', name: 'Фундамент', progress: 40, status: 'in-progress', budget: 400000, spent: 160000 },
+        { id: 's4', name: 'Земляные работы', progress: 100, status: 'completed', budget: 150000, spent: 145000, expenses: [
+          { id: 'e5', description: 'Аренда экскаватора', amount: 45000, type: 'labor', date: '2025-01-05' },
+          { id: 'e6', description: 'Вывоз грунта', amount: 100000, type: 'labor', date: '2025-01-08' },
+        ]},
+        { id: 's5', name: 'Фундамент', progress: 40, status: 'in-progress', budget: 400000, spent: 160000, expenses: [
+          { id: 'e7', description: 'Бетон М300', amount: 80000, type: 'materials', date: '2025-01-12' },
+          { id: 'e8', description: 'Арматура', amount: 50000, type: 'materials', date: '2025-01-14' },
+          { id: 'e9', description: 'Заливка фундамента', amount: 30000, type: 'labor', date: '2025-01-16' },
+        ]},
       ]
     },
   ]);
@@ -90,6 +112,10 @@ const Index = () => {
   const [newStageBudget, setNewStageBudget] = useState('');
   const [editingStageId, setEditingStageId] = useState('');
   const [editStageProgress, setEditStageProgress] = useState('');
+  const [viewingStageExpenses, setViewingStageExpenses] = useState<{siteId: string; stage: WorkStage} | null>(null);
+  const [newExpenseDescription, setNewExpenseDescription] = useState('');
+  const [newExpenseAmount, setNewExpenseAmount] = useState('');
+  const [newExpenseType, setNewExpenseType] = useState<'materials' | 'labor'>('materials');
 
   const addSite = () => {
     if (newSiteName && newSiteAddress) {
@@ -119,6 +145,7 @@ const Index = () => {
             status: 'pending',
             budget: parseFloat(newStageBudget),
             spent: 0,
+            expenses: [],
           };
           return { ...site, stages: [...site.stages, newStage] };
         }
@@ -127,6 +154,69 @@ const Index = () => {
       setNewStageName('');
       setNewStageBudget('');
     }
+  };
+
+  const addExpenseToStage = (siteId: string, stageId: string) => {
+    if (newExpenseDescription && newExpenseAmount) {
+      const amount = parseFloat(newExpenseAmount);
+      setSites(sites.map(site => {
+        if (site.id === siteId) {
+          return {
+            ...site,
+            totalExpense: site.totalExpense + amount,
+            balance: site.totalIncome - (site.totalExpense + amount),
+            stages: site.stages.map(stage => {
+              if (stage.id === stageId) {
+                const newExpense: StageExpense = {
+                  id: `exp_${Date.now()}`,
+                  description: newExpenseDescription,
+                  amount,
+                  type: newExpenseType,
+                  date: new Date().toISOString().split('T')[0],
+                };
+                return {
+                  ...stage,
+                  spent: stage.spent + amount,
+                  expenses: [...stage.expenses, newExpense],
+                };
+              }
+              return stage;
+            }),
+          };
+        }
+        return site;
+      }));
+      setNewExpenseDescription('');
+      setNewExpenseAmount('');
+      setNewExpenseType('materials');
+    }
+  };
+
+  const deleteExpense = (siteId: string, stageId: string, expenseId: string) => {
+    setSites(sites.map(site => {
+      if (site.id === siteId) {
+        const stage = site.stages.find(s => s.id === stageId);
+        const expense = stage?.expenses.find(e => e.id === expenseId);
+        if (expense) {
+          return {
+            ...site,
+            totalExpense: site.totalExpense - expense.amount,
+            balance: site.totalIncome - (site.totalExpense - expense.amount),
+            stages: site.stages.map(s => {
+              if (s.id === stageId) {
+                return {
+                  ...s,
+                  spent: s.spent - expense.amount,
+                  expenses: s.expenses.filter(e => e.id !== expenseId),
+                };
+              }
+              return s;
+            }),
+          };
+        }
+      }
+      return site;
+    }));
   };
 
   const updateStageProgress = (siteId: string, stageId: string, progress: number) => {
@@ -720,8 +810,34 @@ const Index = () => {
                                       Остаток: {(stage.budget - stage.spent).toLocaleString()} ₽
                                     </span>
                                   </div>
+                                  {stage.expenses.length > 0 && (
+                                    <div className="flex items-center gap-2 text-sm mt-1">
+                                      <span className="text-success">Материалы: {stage.expenses.filter(e => e.type === 'materials').reduce((sum, e) => sum + e.amount, 0).toLocaleString()} ₽</span>
+                                      <span className="text-muted-foreground">•</span>
+                                      <span className="text-primary">Работы: {stage.expenses.filter(e => e.type === 'labor').reduce((sum, e) => sum + e.amount, 0).toLocaleString()} ₽</span>
+                                    </div>
+                                  )}
+                                  <Button 
+                                    size="sm" 
+                                    variant="link" 
+                                    className="h-auto p-0 text-xs"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setViewingStageExpenses({ siteId: viewingSite.id, stage });
+                                    }}
+                                  >
+                                    <Icon name="FileText" className="h-3 w-3 mr-1" />
+                                    Детализация расходов ({stage.expenses.length})
+                                  </Button>
                                 </div>
                                 <div className="flex gap-2">
+                                  <Button size="sm" variant="outline" onClick={(e) => {
+                                    e.stopPropagation();
+                                    setViewingStageExpenses({ siteId: viewingSite.id, stage });
+                                  }}>
+                                    <Icon name="Plus" className="h-3 w-3 mr-1" />
+                                    Расход
+                                  </Button>
                                   <Dialog>
                                     <DialogTrigger asChild>
                                       <Button size="sm" variant="outline" onClick={() => {
@@ -782,6 +898,149 @@ const Index = () => {
                             </div>
                           </CardContent>
                         </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={viewingStageExpenses !== null} onOpenChange={(open) => !open && setViewingStageExpenses(null)}>
+        <DialogContent className="bg-card max-w-2xl max-h-[90vh] overflow-y-auto">
+          {viewingStageExpenses && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Icon name="Receipt" className="h-5 w-5 text-primary" />
+                  Детализация расходов: {viewingStageExpenses.stage.name}
+                </DialogTitle>
+                <DialogDescription>
+                  Учет материалов и работ по этапу
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-6 py-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <Card className="bg-success/10 border-success/30">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon name="Package" className="h-4 w-4 text-success" />
+                        <span className="text-sm font-medium text-muted-foreground">Материалы</span>
+                      </div>
+                      <p className="text-2xl font-bold text-success">
+                        {viewingStageExpenses.stage.expenses
+                          .filter(e => e.type === 'materials')
+                          .reduce((sum, e) => sum + e.amount, 0)
+                          .toLocaleString()} ₽
+                      </p>
+                    </CardContent>
+                  </Card>
+                  <Card className="bg-primary/10 border-primary/30">
+                    <CardContent className="pt-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon name="Hammer" className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium text-muted-foreground">Работы</span>
+                      </div>
+                      <p className="text-2xl font-bold text-primary">
+                        {viewingStageExpenses.stage.expenses
+                          .filter(e => e.type === 'labor')
+                          .reduce((sum, e) => sum + e.amount, 0)
+                          .toLocaleString()} ₽
+                      </p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="border-t border-border pt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="font-semibold">Добавить расход</h3>
+                  </div>
+                  <div className="grid gap-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="grid gap-2">
+                        <Label htmlFor="expense-type">Тип расхода</Label>
+                        <Select value={newExpenseType} onValueChange={(v) => setNewExpenseType(v as 'materials' | 'labor')}>
+                          <SelectTrigger id="expense-type">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="materials">Материалы</SelectItem>
+                            <SelectItem value="labor">Работы</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="grid gap-2">
+                        <Label htmlFor="expense-amount">Сумма</Label>
+                        <Input
+                          id="expense-amount"
+                          type="number"
+                          value={newExpenseAmount}
+                          onChange={(e) => setNewExpenseAmount(e.target.value)}
+                          placeholder="50000"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="expense-desc">Описание</Label>
+                      <Input
+                        id="expense-desc"
+                        value={newExpenseDescription}
+                        onChange={(e) => setNewExpenseDescription(e.target.value)}
+                        placeholder="Например: Цемент М500, 10 тонн"
+                      />
+                    </div>
+                    <Button 
+                      onClick={() => {
+                        addExpenseToStage(viewingStageExpenses.siteId, viewingStageExpenses.stage.id);
+                      }} 
+                      className="bg-primary hover:bg-primary/90"
+                    >
+                      <Icon name="Plus" className="h-4 w-4 mr-2" />
+                      Добавить расход
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="border-t border-border pt-4">
+                  <h3 className="font-semibold mb-4">История расходов</h3>
+                  {viewingStageExpenses.stage.expenses.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">Нет расходов</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {viewingStageExpenses.stage.expenses.map((expense) => (
+                        <div
+                          key={expense.id}
+                          className="flex items-center justify-between p-3 rounded-lg border border-border hover:border-primary transition-colors"
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${expense.type === 'materials' ? 'bg-success/20' : 'bg-primary/20'}`}>
+                              <Icon 
+                                name={expense.type === 'materials' ? 'Package' : 'Hammer'} 
+                                className={`h-4 w-4 ${expense.type === 'materials' ? 'text-success' : 'text-primary'}`}
+                              />
+                            </div>
+                            <div>
+                              <p className="font-medium text-sm">{expense.description}</p>
+                              <p className="text-xs text-muted-foreground">
+                                {expense.type === 'materials' ? 'Материалы' : 'Работы'} • {expense.date}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <p className="font-bold">{expense.amount.toLocaleString()} ₽</p>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="hover:bg-destructive hover:text-white"
+                              onClick={() => deleteExpense(viewingStageExpenses.siteId, viewingStageExpenses.stage.id, expense.id)}
+                            >
+                              <Icon name="Trash2" className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
