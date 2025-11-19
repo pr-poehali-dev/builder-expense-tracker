@@ -6,8 +6,19 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
 import Icon from '@/components/ui/icon';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+
+interface WorkStage {
+  id: string;
+  name: string;
+  progress: number;
+  status: 'pending' | 'in-progress' | 'completed';
+  budget: number;
+  spent: number;
+}
 
 interface Site {
   id: string;
@@ -16,11 +27,13 @@ interface Site {
   totalIncome: number;
   totalExpense: number;
   balance: number;
+  stages: WorkStage[];
 }
 
 interface Transaction {
   id: string;
   siteId: string;
+  stageId?: string;
   type: 'income' | 'expense';
   amount: number;
   description: string;
@@ -30,26 +43,53 @@ interface Transaction {
 
 const Index = () => {
   const [sites, setSites] = useState<Site[]>([
-    { id: '1', name: 'ЖК Солнечный', address: 'ул. Ленина, 45', totalIncome: 1500000, totalExpense: 850000, balance: 650000 },
-    { id: '2', name: 'Коттедж на Озерной', address: 'пос. Заречье, уч. 12', totalIncome: 800000, totalExpense: 620000, balance: 180000 },
-    { id: '3', name: 'Реконструкция офиса', address: 'пр. Мира, 78', totalIncome: 950000, totalExpense: 720000, balance: 230000 },
+    { 
+      id: '1', 
+      name: 'ЖК Солнечный', 
+      address: 'ул. Ленина, 45', 
+      totalIncome: 1500000, 
+      totalExpense: 850000, 
+      balance: 650000,
+      stages: [
+        { id: 's1', name: 'Фундамент', progress: 100, status: 'completed', budget: 300000, spent: 280000 },
+        { id: 's2', name: 'Стены', progress: 65, status: 'in-progress', budget: 500000, spent: 320000 },
+        { id: 's3', name: 'Кровля', progress: 0, status: 'pending', budget: 250000, spent: 0 },
+      ]
+    },
+    { 
+      id: '2', 
+      name: 'Коттедж на Озерной', 
+      address: 'пос. Заречье, уч. 12', 
+      totalIncome: 800000, 
+      totalExpense: 620000, 
+      balance: 180000,
+      stages: [
+        { id: 's4', name: 'Земляные работы', progress: 100, status: 'completed', budget: 150000, spent: 145000 },
+        { id: 's5', name: 'Фундамент', progress: 40, status: 'in-progress', budget: 400000, spent: 160000 },
+      ]
+    },
   ]);
 
   const [transactions, setTransactions] = useState<Transaction[]>([
-    { id: '1', siteId: '1', type: 'income', amount: 500000, description: 'Оплата по договору', date: '2025-01-15', category: 'Платеж заказчика' },
-    { id: '2', siteId: '1', type: 'expense', amount: 150000, description: 'Закупка материалов', date: '2025-01-16', category: 'Материалы' },
+    { id: '1', siteId: '1', stageId: 's1', type: 'expense', amount: 280000, description: 'Работы по фундаменту', date: '2025-01-15', category: 'Фундамент' },
+    { id: '2', siteId: '1', stageId: 's2', type: 'expense', amount: 150000, description: 'Закупка кирпича', date: '2025-01-16', category: 'Материалы' },
     { id: '3', siteId: '2', type: 'income', amount: 300000, description: 'Аванс', date: '2025-01-17', category: 'Платеж заказчика' },
-    { id: '4', siteId: '2', type: 'expense', amount: 80000, description: 'Зарплата бригады', date: '2025-01-18', category: 'Зарплата' },
   ]);
 
   const [selectedSite, setSelectedSite] = useState<string>('all');
+  const [viewingSite, setViewingSite] = useState<Site | null>(null);
   const [newSiteName, setNewSiteName] = useState('');
   const [newSiteAddress, setNewSiteAddress] = useState('');
   const [newTransactionSite, setNewTransactionSite] = useState('');
+  const [newTransactionStage, setNewTransactionStage] = useState('');
   const [newTransactionType, setNewTransactionType] = useState<'income' | 'expense'>('income');
   const [newTransactionAmount, setNewTransactionAmount] = useState('');
   const [newTransactionDescription, setNewTransactionDescription] = useState('');
   const [newTransactionCategory, setNewTransactionCategory] = useState('');
+  const [newStageName, setNewStageName] = useState('');
+  const [newStageBudget, setNewStageBudget] = useState('');
+  const [editingStageId, setEditingStageId] = useState('');
+  const [editStageProgress, setEditStageProgress] = useState('');
 
   const addSite = () => {
     if (newSiteName && newSiteAddress) {
@@ -60,11 +100,67 @@ const Index = () => {
         totalIncome: 0,
         totalExpense: 0,
         balance: 0,
+        stages: [],
       };
       setSites([...sites, newSite]);
       setNewSiteName('');
       setNewSiteAddress('');
     }
+  };
+
+  const addStageToSite = (siteId: string) => {
+    if (newStageName && newStageBudget) {
+      setSites(sites.map(site => {
+        if (site.id === siteId) {
+          const newStage: WorkStage = {
+            id: `stage_${Date.now()}`,
+            name: newStageName,
+            progress: 0,
+            status: 'pending',
+            budget: parseFloat(newStageBudget),
+            spent: 0,
+          };
+          return { ...site, stages: [...site.stages, newStage] };
+        }
+        return site;
+      }));
+      setNewStageName('');
+      setNewStageBudget('');
+    }
+  };
+
+  const updateStageProgress = (siteId: string, stageId: string, progress: number) => {
+    setSites(sites.map(site => {
+      if (site.id === siteId) {
+        return {
+          ...site,
+          stages: site.stages.map(stage => {
+            if (stage.id === stageId) {
+              let status: 'pending' | 'in-progress' | 'completed' = 'pending';
+              if (progress === 100) status = 'completed';
+              else if (progress > 0) status = 'in-progress';
+              return { ...stage, progress, status };
+            }
+            return stage;
+          })
+        };
+      }
+      return site;
+    }));
+    setEditingStageId('');
+    setEditStageProgress('');
+  };
+
+  const deleteStage = (siteId: string, stageId: string) => {
+    setSites(sites.map(site => {
+      if (site.id === siteId) {
+        return {
+          ...site,
+          stages: site.stages.filter(stage => stage.id !== stageId)
+        };
+      }
+      return site;
+    }));
   };
 
   const addTransaction = () => {
@@ -73,6 +169,7 @@ const Index = () => {
       const newTransaction: Transaction = {
         id: Date.now().toString(),
         siteId: newTransactionSite,
+        stageId: newTransactionStage || undefined,
         type: newTransactionType,
         amount,
         description: newTransactionDescription,
@@ -86,17 +183,30 @@ const Index = () => {
         if (site.id === newTransactionSite) {
           const newIncome = newTransactionType === 'income' ? site.totalIncome + amount : site.totalIncome;
           const newExpense = newTransactionType === 'expense' ? site.totalExpense + amount : site.totalExpense;
+          
+          let updatedStages = site.stages;
+          if (newTransactionStage && newTransactionType === 'expense') {
+            updatedStages = site.stages.map(stage => {
+              if (stage.id === newTransactionStage) {
+                return { ...stage, spent: stage.spent + amount };
+              }
+              return stage;
+            });
+          }
+          
           return {
             ...site,
             totalIncome: newIncome,
             totalExpense: newExpense,
             balance: newIncome - newExpense,
+            stages: updatedStages,
           };
         }
         return site;
       }));
       
       setNewTransactionSite('');
+      setNewTransactionStage('');
       setNewTransactionAmount('');
       setNewTransactionDescription('');
       setNewTransactionCategory('');
@@ -122,6 +232,24 @@ const Index = () => {
     { name: 'Доходы', value: totalIncome, color: '#10B981' },
     { name: 'Расходы', value: totalExpense, color: '#F97316' },
   ];
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed': return 'bg-success text-white';
+      case 'in-progress': return 'bg-primary text-white';
+      case 'pending': return 'bg-muted text-muted-foreground';
+      default: return 'bg-muted';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'completed': return 'Завершено';
+      case 'in-progress': return 'В работе';
+      case 'pending': return 'Ожидание';
+      default: return status;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -298,7 +426,7 @@ const Index = () => {
 
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {sites.map((site) => (
-                <Card key={site.id} className="bg-card border-border hover:border-primary transition-all hover:scale-105">
+                <Card key={site.id} className="bg-card border-border hover:border-primary transition-all hover:scale-105 cursor-pointer" onClick={() => setViewingSite(site)}>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Icon name="Building2" className="h-5 w-5 text-primary" />
@@ -322,6 +450,15 @@ const Index = () => {
                       <span className="text-sm font-medium">Баланс:</span>
                       <span className="font-bold text-primary">{site.balance.toLocaleString()} ₽</span>
                     </div>
+                    {site.stages.length > 0 && (
+                      <div className="pt-2 border-t border-border">
+                        <div className="flex items-center justify-between mb-1">
+                          <span className="text-xs text-muted-foreground">Этапы работ:</span>
+                          <span className="text-xs font-medium">{site.stages.filter(s => s.status === 'completed').length}/{site.stages.length}</span>
+                        </div>
+                        <Progress value={(site.stages.filter(s => s.status === 'completed').length / site.stages.length) * 100} className="h-2" />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
@@ -371,6 +508,22 @@ const Index = () => {
                         </SelectContent>
                       </Select>
                     </div>
+                    {newTransactionSite && sites.find(s => s.id === newTransactionSite)?.stages.length > 0 && (
+                      <div className="grid gap-2">
+                        <Label htmlFor="trans-stage">Этап работ (опционально)</Label>
+                        <Select value={newTransactionStage} onValueChange={setNewTransactionStage}>
+                          <SelectTrigger id="trans-stage">
+                            <SelectValue placeholder="Выберите этап" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">Не привязывать к этапу</SelectItem>
+                            {sites.find(s => s.id === newTransactionSite)?.stages.map((stage) => (
+                              <SelectItem key={stage.id} value={stage.id}>{stage.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                     <div className="grid gap-2">
                       <Label htmlFor="trans-type">Тип</Label>
                       <Select value={newTransactionType} onValueChange={(v) => setNewTransactionType(v as 'income' | 'expense')}>
@@ -431,6 +584,7 @@ const Index = () => {
                   ) : (
                     filteredTransactions.map((transaction) => {
                       const site = sites.find(s => s.id === transaction.siteId);
+                      const stage = transaction.stageId ? site?.stages.find(st => st.id === transaction.stageId) : null;
                       return (
                         <div
                           key={transaction.id}
@@ -445,7 +599,9 @@ const Index = () => {
                             </div>
                             <div>
                               <p className="font-medium">{transaction.description}</p>
-                              <p className="text-sm text-muted-foreground">{site?.name} • {transaction.category}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {site?.name} {stage && `• ${stage.name}`} • {transaction.category}
+                              </p>
                             </div>
                           </div>
                           <div className="text-right">
@@ -464,6 +620,177 @@ const Index = () => {
           </TabsContent>
         </Tabs>
       </main>
+
+      <Dialog open={viewingSite !== null} onOpenChange={(open) => !open && setViewingSite(null)}>
+        <DialogContent className="bg-card max-w-3xl max-h-[90vh] overflow-y-auto">
+          {viewingSite && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <Icon name="Building2" className="h-6 w-6 text-primary" />
+                  {viewingSite.name}
+                </DialogTitle>
+                <DialogDescription className="flex items-center gap-1">
+                  <Icon name="MapPin" className="h-4 w-4" />
+                  {viewingSite.address}
+                </DialogDescription>
+              </DialogHeader>
+              
+              <div className="space-y-6 py-4">
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Доходы</p>
+                    <p className="text-xl font-bold text-success">{viewingSite.totalIncome.toLocaleString()} ₽</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Расходы</p>
+                    <p className="text-xl font-bold text-destructive">{viewingSite.totalExpense.toLocaleString()} ₽</p>
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Баланс</p>
+                    <p className="text-xl font-bold text-primary">{viewingSite.balance.toLocaleString()} ₽</p>
+                  </div>
+                </div>
+
+                <div className="border-t border-border pt-4">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-lg font-semibold">Этапы работ</h3>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button size="sm" className="bg-primary hover:bg-primary/90">
+                          <Icon name="Plus" className="h-4 w-4 mr-1" />
+                          Добавить этап
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="bg-card">
+                        <DialogHeader>
+                          <DialogTitle>Новый этап работ</DialogTitle>
+                          <DialogDescription>Добавьте этап строительства для объекта</DialogDescription>
+                        </DialogHeader>
+                        <div className="grid gap-4 py-4">
+                          <div className="grid gap-2">
+                            <Label htmlFor="stage-name">Название этапа</Label>
+                            <Input
+                              id="stage-name"
+                              value={newStageName}
+                              onChange={(e) => setNewStageName(e.target.value)}
+                              placeholder="Например: Фундамент, Кровля..."
+                            />
+                          </div>
+                          <div className="grid gap-2">
+                            <Label htmlFor="stage-budget">Бюджет этапа</Label>
+                            <Input
+                              id="stage-budget"
+                              type="number"
+                              value={newStageBudget}
+                              onChange={(e) => setNewStageBudget(e.target.value)}
+                              placeholder="500000"
+                            />
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button onClick={() => addStageToSite(viewingSite.id)} className="bg-primary hover:bg-primary/90">
+                            Добавить
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+
+                  {viewingSite.stages.length === 0 ? (
+                    <p className="text-center text-muted-foreground py-8">Нет этапов. Добавьте первый этап работ.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {viewingSite.stages.map((stage) => (
+                        <Card key={stage.id} className="bg-card/50 border-border">
+                          <CardContent className="pt-4">
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <h4 className="font-semibold">{stage.name}</h4>
+                                    <Badge className={getStatusColor(stage.status)}>
+                                      {getStatusText(stage.status)}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                    <span>Бюджет: {stage.budget.toLocaleString()} ₽</span>
+                                    <span>Потрачено: {stage.spent.toLocaleString()} ₽</span>
+                                    <span className={stage.spent > stage.budget ? 'text-destructive font-medium' : ''}>
+                                      Остаток: {(stage.budget - stage.spent).toLocaleString()} ₽
+                                    </span>
+                                  </div>
+                                </div>
+                                <div className="flex gap-2">
+                                  <Dialog>
+                                    <DialogTrigger asChild>
+                                      <Button size="sm" variant="outline" onClick={() => {
+                                        setEditingStageId(stage.id);
+                                        setEditStageProgress(stage.progress.toString());
+                                      }}>
+                                        <Icon name="Edit" className="h-3 w-3" />
+                                      </Button>
+                                    </DialogTrigger>
+                                    <DialogContent className="bg-card">
+                                      <DialogHeader>
+                                        <DialogTitle>Обновить прогресс</DialogTitle>
+                                        <DialogDescription>Укажите процент выполнения этапа "{stage.name}"</DialogDescription>
+                                      </DialogHeader>
+                                      <div className="grid gap-4 py-4">
+                                        <div className="grid gap-2">
+                                          <Label htmlFor="stage-progress">Прогресс (%)</Label>
+                                          <Input
+                                            id="stage-progress"
+                                            type="number"
+                                            min="0"
+                                            max="100"
+                                            value={editStageProgress}
+                                            onChange={(e) => setEditStageProgress(e.target.value)}
+                                            placeholder="0-100"
+                                          />
+                                        </div>
+                                      </div>
+                                      <DialogFooter>
+                                        <Button onClick={() => {
+                                          const progress = parseInt(editStageProgress);
+                                          if (progress >= 0 && progress <= 100) {
+                                            updateStageProgress(viewingSite.id, stage.id, progress);
+                                          }
+                                        }} className="bg-primary hover:bg-primary/90">
+                                          Обновить
+                                        </Button>
+                                      </DialogFooter>
+                                    </DialogContent>
+                                  </Dialog>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    className="hover:bg-destructive hover:text-white"
+                                    onClick={() => deleteStage(viewingSite.id, stage.id)}
+                                  >
+                                    <Icon name="Trash2" className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="space-y-1">
+                                <div className="flex justify-between text-xs text-muted-foreground">
+                                  <span>Прогресс</span>
+                                  <span>{stage.progress}%</span>
+                                </div>
+                                <Progress value={stage.progress} className="h-2" />
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <footer className="border-t border-border mt-16 py-8 bg-card/50">
         <div className="container mx-auto px-4 text-center text-muted-foreground">
